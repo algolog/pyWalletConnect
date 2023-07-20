@@ -249,21 +249,18 @@ class WCv2Client(WCClient):
                             "Session propose incompatible protocol."
                         )
                     self.peer_pubkey = read_data[2]["proposer"]["publicKey"]
-                    if read_data[2]["requiredNamespaces"].get(
-                            self.wallet_namespace) is None:
+                    if read_data[2]["requiredNamespaces"].get("eip155") is None:
                         raise WCClientException(
-                            f"Wallet namespace ({self.wallet_namespace}) mismatch."
+                            "Only compatible with EIP155 namespaces."
                         )
                     self.proposed_methods = read_data[2]["requiredNamespaces"][
-                        self.wallet_namespace
+                        "eip155"
                     ]["methods"]
-                    self.proposed_events = read_data[2]["requiredNamespaces"][
-                        self.wallet_namespace
-                    ]["events"]
+                    self.proposed_events = read_data[2]["requiredNamespaces"]["eip155"][
+                        "events"
+                    ]
                     peer_meta = read_data[2]["proposer"]["metadata"]
-                    chain_id = read_data[2]["requiredNamespaces"][
-                        self.wallet_namespace
-                    ]["chains"][
+                    chain_id = read_data[2]["requiredNamespaces"]["eip155"]["chains"][
                         0
                     ].split(":")[-1]
                     logger.debug("OK continue : Session proposal payload received")
@@ -332,8 +329,8 @@ class WCv2Client(WCClient):
                     "metadata": self.wallet_metadata,
                 },
                 "namespaces": {
-                    self.wallet_namespace: {
-                        "accounts": [f"{self.wallet_namespace}:{chain_id}:{account_address}"],
+                    "eip155": {
+                        "accounts": [f"eip155:{chain_id}:{account_address}"],
                         "methods": self.proposed_methods,
                         "events": self.proposed_events,
                     }
@@ -345,7 +342,7 @@ class WCv2Client(WCClient):
         chat_enc_channel = EncryptedEnvelope(self.local_keypair.shared_key)
         self.topics[chat_topic] = {"secure_channel": chat_enc_channel}
         msgb = chat_enc_channel.encrypt_payload(json_encode(respo))
-        logger.debug("Approving the session proposal: %s", json_encode(respo))
+        logger.debug("Approving the session proposal.")
 
         self.subscribe(chat_topic)
 
