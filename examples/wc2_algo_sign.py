@@ -1,5 +1,6 @@
 from logging import basicConfig, DEBUG, INFO
 from time import sleep
+from dataclasses import dataclass
 from pywalletconnect.client import WCClient
 from algosdk.encoding import msgpack_encode, msgpack_decode, is_valid_address
 from algosdk.transaction import SignedTransaction, calculate_group_id
@@ -11,24 +12,20 @@ from dotenv import dotenv_values
 # Enable for debug output
 basicConfig(level=INFO)
 
+
+@dataclass(frozen=True)
+class WCError:
+    msg: str
+    code: int
+
+
 ALGORAND_MAINNET_CHAIN_ID = 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73k'
 ALGORAND_TESTNET_CHAIN_ID = 'SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe'
 
-WC_ERROR_REJECTED = 4001
-WC_ERROR_UNAUTHORIZED = 4100
-WC_ERROR_UNSUPPORTED = 4200
-WC_ERROR_INVALID_INPUT = 4300
-
-
-def wcerr_obj(code: int):
-    """Constuct object for JSON-RPC error reply"""
-    msg = {
-        WC_ERROR_REJECTED: 'User Rejected Request',
-        WC_ERROR_UNAUTHORIZED: 'Unauthorized',
-        WC_ERROR_UNSUPPORTED: 'Unsupported Operation',
-        WC_ERROR_INVALID_INPUT: 'Invalid Input'
-    }
-    return {'code': code, 'message': msg[code]}
+WC_ERROR_REJECTED = WCError('User Rejected Request', 4001)
+WC_ERROR_UNAUTHORIZED = WCError('User Rejected Request', 4100)
+WC_ERROR_UNSUPPORTED = WCError('Unsupported Operation', 4200)
+WC_ERROR_INVALID_INPUT = WCError('Invalid Input', 4300)
 
 
 def process_sign_txns(txns, key, opts=None):
@@ -43,10 +40,10 @@ def process_sign_txns(txns, key, opts=None):
     Returns:
         tuple: result, error
             result (list): list of signed transactions
-            error (int): one of WC_ERROR codes or None
+            error (WCError): one of WC_ERROR objects or None
     """
     signing_address = account.address_from_private_key(key)
-    error_code = None
+    error = None
     result = []
     nogrp_utxns = []  # all unsigned input txns with their group stripped
     grp_ids = []      # all group_ids from input txns
@@ -56,7 +53,7 @@ def process_sign_txns(txns, key, opts=None):
         try:
             unsigned_txn = msgpack_decode(wallet_txn['txn'])
         except Exception:
-            error_code = WC_ERROR_INVALID_INPUT
+            error = WC_ERROR_INVALID_INPUT
             break
 
         # save group-related info for group_id validation
@@ -73,16 +70,16 @@ def process_sign_txns(txns, key, opts=None):
 
         # reject multisigs
         if 'msig' in wallet_txn:
-            error_code = WC_ERROR_UNSUPPORTED
+            error = WC_ERROR_UNSUPPORTED
             break
 
         # validate rekeyed requests
         if auth_addr:
             if not is_valid_address(auth_addr):
-                error_code = WC_ERROR_INVALID_INPUT
+                error = WC_ERROR_INVALID_INPUT
                 break
             if auth_addr != signing_address:
-                error_code = WC_ERROR_UNAUTHORIZED
+                error = WC_ERROR_UNAUTHORIZED
                 break
 
         # human-readable group id as in algoexplorer
@@ -123,7 +120,7 @@ def process_sign_txns(txns, key, opts=None):
                     else:
                         raise ValueError('Bad stxn provided')
                 except Exception:
-                    error_code = WC_ERROR_INVALID_INPUT
+                    error = WC_ERROR_INVALID_INPUT
                     break
         else:
             # TODO: extra validations when signers array is non-empty
@@ -141,25 +138,25 @@ def process_sign_txns(txns, key, opts=None):
 
     # group validation: only allow single tx or single group for now
     ref_grp_id = calculate_group_id(nogrp_utxns)
-    if error_code is None:
+    if error is None:
         if not (
             len(grp_ids) == len(txns)
             and (all(gid == ref_grp_id for gid in grp_ids)
                  or (grp_ids == [None]))
         ):
             print(f"Group validation ERROR: {grp_ids}")
-            error_code = WC_ERROR_UNSUPPORTED
+            error = WC_ERROR_UNSUPPORTED
 
     # must return array of the same length as the input
-    if error_code is None:
+    if error is None:
         if len(result) != len(txns):
-            error_code = WC_ERROR_INVALID_INPUT
+            error = WC_ERROR_INVALID_INPUT
 
     # clear the result in case there were any errors
-    if error_code is not None:
+    if error is not None:
         result = []
 
-    return (result, error_code)
+    return (result, error)
 
 
 def WCCLIalgo():
@@ -189,7 +186,8 @@ def WCCLIalgo():
     if req_chain_id != wallet_chain_id:
         # Chain id mismatch
         wclient.close()
-        raise InvalidOption("Chain ID from Dapp is not the same as the wallet.")
+        raise ValueError(f"Chain ID from Dapp ({req_chain_id}) is not the"
+                         f" same as the wallet's ({wallet_chain_id}).")
 
     # Waiting for user accept the Dapp request
     user_ok = input(
@@ -208,7 +206,7 @@ def WCCLIalgo():
     print("Now waiting for dapp messages ...")
     while True:
         try:
-            sleep(0.5)
+            sleep(0.3)
             # get_message return : (id, method, params) or (None, "", [])
             wc_message = wclient.get_message()
             request_id = wc_message[0]
@@ -243,18 +241,17 @@ def WCCLIalgo():
                                                     signing_key,
                                                     sign_txn_opts)
                     if err is not None:
-                        wclient.reply(request_id, wcerr_obj(err), as_error=True)
-                        print(f"----> Replied with error: {wcerr_obj(err)}")
+                        wclient.reply_error(request_id, err.msg, err.code)
+                        print(f"----> Replied with error: {err.code} - {err.msg}")
                     else:
                         approve_ask = input('Approve (y/N)?: ').lower()
                         if approve_ask == 'y':
                             wclient.reply(request_id, result)
                             print(f"----> Replied with {len(result)} signed Txns.")
                         else:
-                            wclient.reply(request_id,
-                                          wcerr_obj(WC_ERROR_REJECTED),
-                                          as_error=True)
-                            print(f"----> Replied with error: {wcerr_obj(WC_ERROR_REJECTED)}")
+                            err = WC_ERROR_REJECTED
+                            wclient.reply_error(request_id, err.msg, err.code)
+                            print(f"----> Replied with error: {err.code} - {err.msg}")
 
         except KeyboardInterrupt:
             print("Interrupted.")
