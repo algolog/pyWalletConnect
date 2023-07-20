@@ -1,7 +1,7 @@
 from logging import basicConfig, DEBUG, INFO
 from time import sleep
 from dataclasses import dataclass
-from pywalletconnect.client import WCClient
+from pywalletconnect.client import WCClient, WCv1Client
 from algosdk.encoding import msgpack_encode, msgpack_decode, is_valid_address
 from algosdk.transaction import SignedTransaction, calculate_group_id
 from algosdk import account, mnemonic
@@ -21,6 +21,8 @@ class WCError:
 
 ALGORAND_MAINNET_CHAIN_ID = 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73k'
 ALGORAND_TESTNET_CHAIN_ID = 'SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe'
+ALGORAND_MAINNET_CHAIN_ID_WC1 = 416001
+ALGORAND_TESTNET_CHAIN_ID_WC1 = 416002
 
 WC_ERROR_REJECTED = WCError('User Rejected Request', 4001)
 WC_ERROR_UNAUTHORIZED = WCError('User Rejected Request', 4100)
@@ -181,6 +183,10 @@ def WCCLIalgo():
 
     uri = input("Paste a Dapp WC URI: ")
     wclient = WCClient.from_wc_uri(uri)
+    if isinstance(wclient, WCv1Client):
+        print("Falling back to v1 client ...")
+        wallet_chain_id = ALGORAND_MAINNET_CHAIN_ID_WC1
+
     print("Connecting with the Dapp ...")
     req_id, req_chain_id, request_info = wclient.open_session()
     if req_chain_id != wallet_chain_id:
