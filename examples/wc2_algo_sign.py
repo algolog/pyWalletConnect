@@ -9,13 +9,13 @@ from base64 import b64encode
 import copy
 from dotenv import dotenv_values
 
-# Enable for debug output
+# Set to DEBUG for debug output
 basicConfig(level=INFO)
 
-ALGORAND_MAINNET_CHAIN_ID = 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73k'
-ALGORAND_TESTNET_CHAIN_ID = 'SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe'
-ALGORAND_MAINNET_CHAIN_ID_WC1 = 416001
-ALGORAND_TESTNET_CHAIN_ID_WC1 = 416002
+ALGORAND_CHAIN_ID_WC1 = {'mainnet': 416001,
+                         'testnet': 416002}
+ALGORAND_CHAIN_ID_WC2 = {'mainnet': 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73k',
+                         'testnet': 'SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe'}
 
 WCError = make_dataclass('WCError', [('msg', str), ('code', int)])
 WC_ERROR_REJECTED = WCError('User Rejected Request', 4001)
@@ -161,25 +161,27 @@ def WCCLIalgo():
     # Load wallet account. Use .env for demo only,
     # better keep your keys in KMD or hw backed keyring
     env_vars = dotenv_values()
-    wallet_chain_id = ALGORAND_MAINNET_CHAIN_ID
+    wallet_network = 'mainnet'
     wallet_key = mnemonic.to_private_key(env_vars["mnemonic"])
     wallet_address = account.address_from_private_key(wallet_key)
-    wallet_project_id = env_vars['wc_project_id']
     signing_key = wallet_key    # can be another key for rekeyed accounts
     signing_address = account.address_from_private_key(signing_key)
-    print(f"Chain ID: {wallet_chain_id}")
+    print(f"Using Algorand '{wallet_network}' network")
     print(f"Using account: {wallet_address}")
     print(f"Using signing account: {signing_address}")
 
     # set metadata
     WCClient.set_wallet_namespace('algorand')
-    WCClient.set_project_id(wallet_project_id)  # Required for v2
+    WCClient.set_project_id(env_vars['wc_project_id'])  # Required for v2
 
     uri = input("Paste a Dapp WC URI: ")
     wclient = WCClient.from_wc_uri(uri)
     if isinstance(wclient, WCv1Client):
-        print("Falling back to v1 client ...")
-        wallet_chain_id = ALGORAND_MAINNET_CHAIN_ID_WC1
+        print("Falling back to WCv1 client ...")
+        wallet_chain_id = ALGORAND_CHAIN_ID_WC1[wallet_network]
+    else:
+        print("Starting WCv2 client ...")
+        wallet_chain_id = ALGORAND_CHAIN_ID_WC2[wallet_network]
 
     print("Connecting with the Dapp ...")
     req_id, req_chain_id, request_info = wclient.open_session()
@@ -206,7 +208,7 @@ def WCCLIalgo():
     print("Now waiting for dapp messages ...")
     while True:
         try:
-            sleep(0.3)
+            sleep(0.5)
             # get_message return : (id, method, params) or (None, "", [])
             wc_message = wclient.get_message()
             request_id = wc_message[0]
