@@ -186,12 +186,21 @@ class WCv2Client(WCClient):
 
     def reply(self, req_id, result):
         """Send a RPC response to the current topic to the webapp through the relay."""
-        self._reply(self.wallet_id, req_id, result)
+        self._reply(self.wallet_id, req_id, result, success=True)
 
-    def _reply(self, topic, req_id, result, tag=0):
+    def reject(self, req_id, error_code=5002):
+        """Inform the webapp that this request was rejected by the user."""
+        self.reply_error(req_id, "User rejected.", error_code)
+
+    def reply_error(self, req_id, message, error_code):
+        """Send a RPC error to the current topic to the webapp through the relay."""
+        result = {'code': error_code, 'message': message}
+        self._reply(self.wallet_id, req_id, result, success=False)
+
+    def _reply(self, topic, req_id, result, tag=0, success=True):
         """Send a RPC response to the webapp through the relay."""
         logger.debug("Sending response result : %s , %s", req_id, result)
-        payload_bin = json_rpc_pack_response(req_id, result)
+        payload_bin = json_rpc_pack_response(req_id, result, success)
         msgbp = self.topics[topic]["secure_channel"].encrypt_payload(payload_bin, None)
         logger.debug("Sending result reply.")
         self.publish(topic, msgbp, tag, "Sending result")
@@ -249,18 +258,21 @@ class WCv2Client(WCClient):
                             "Session propose incompatible protocol."
                         )
                     self.peer_pubkey = read_data[2]["proposer"]["publicKey"]
-                    if read_data[2]["requiredNamespaces"].get("eip155") is None:
+                    if read_data[2]["requiredNamespaces"].get(
+                            self.wallet_namespace) is None:
                         raise WCClientException(
-                            "Only compatible with EIP155 namespaces."
+                            f"Wallet namespace ({self.wallet_namespace}) mismatch."
                         )
                     self.proposed_methods = read_data[2]["requiredNamespaces"][
-                        "eip155"
+                        self.wallet_namespace
                     ]["methods"]
-                    self.proposed_events = read_data[2]["requiredNamespaces"]["eip155"][
-                        "events"
-                    ]
+                    self.proposed_events = read_data[2]["requiredNamespaces"][
+                        self.wallet_namespace
+                    ]["events"]
                     peer_meta = read_data[2]["proposer"]["metadata"]
-                    chain_id = read_data[2]["requiredNamespaces"]["eip155"]["chains"][
+                    chain_id = read_data[2]["requiredNamespaces"][
+                        self.wallet_namespace
+                    ]["chains"][
                         0
                     ].split(":")[-1]
                     logger.debug("OK continue : Session proposal payload received")
@@ -277,9 +289,8 @@ class WCv2Client(WCClient):
 
         respo_neg = json_rpc_pack_response(
             msg_id,
-            {
-                "error": {"code": 5000, "message": "User rejected the session."},
-            },
+            {"code": 5000, "message": "User rejected the session."},
+            success=False
         )
         msgbn = self.topics[self.proposal_topic]["secure_channel"].encrypt_payload(
             respo_neg, None
@@ -329,8 +340,8 @@ class WCv2Client(WCClient):
                     "metadata": self.wallet_metadata,
                 },
                 "namespaces": {
-                    "eip155": {
-                        "accounts": [f"eip155:{chain_id}:{account_address}"],
+                    self.wallet_namespace: {
+                        "accounts": [f"{self.wallet_namespace}:{chain_id}:{account_address}"],
                         "methods": self.proposed_methods,
                         "events": self.proposed_events,
                     }
@@ -342,7 +353,7 @@ class WCv2Client(WCClient):
         chat_enc_channel = EncryptedEnvelope(self.local_keypair.shared_key)
         self.topics[chat_topic] = {"secure_channel": chat_enc_channel}
         msgb = chat_enc_channel.encrypt_payload(json_encode(respo))
-        logger.debug("Approving the session proposal.")
+        logger.debug("Approving the session proposal: %s", json_encode(respo))
 
         self.subscribe(chat_topic)
 
