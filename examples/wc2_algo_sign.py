@@ -44,7 +44,7 @@ def process_sign_txns(txns, key, opts=None):
     result = []
     nogrp_utxns = []  # all unsigned input txns with their group stripped
     grp_ids = []      # all group_ids from input txns
-    warn_txn = defaultdict(list)
+    warn_tx_nums = defaultdict(list)  # store seq_nums of dangerous tnxs
 
     for seq_num, wallet_txn in enumerate(txns, 1):
         # extract the Transaction object for signing
@@ -82,11 +82,11 @@ def process_sign_txns(txns, key, opts=None):
 
         # detect dangerous ops
         if getattr(unsigned_txn, 'rekey_to', None):
-            warn_txn['rekey_to'].append(seq_num)
+            warn_tx_nums['rekey_to'].append(seq_num)
         if getattr(unsigned_txn, 'close_remainder_to', None):
-            warn_txn['close_remainder_to'].append(seq_num)
+            warn_tx_nums['close_remainder_to'].append(seq_num)
         if getattr(unsigned_txn, 'close_assets_to', None):
-            warn_txn['close_assets_to'].append(seq_num)
+            warn_tx_nums['close_assets_to'].append(seq_num)
 
         # human-readable group id as in algoexplorer
         group_id = unsigned_txn.group
@@ -148,8 +148,8 @@ def process_sign_txns(txns, key, opts=None):
             error = WC_ERROR_UNSUPPORTED
 
     # report summary of dangerous transactions
-    if warn_txn:
-        wlist = [f'{warn_txn[op]} has {op}' for op in warn_txn]
+    if warn_tx_nums:
+        wlist = [f'{warn_tx_nums[op]} has {op}' for op in warn_tx_nums]
         print('WARNING:', '; '.join(wlist), '- WARNING!!!')
 
     # must return array of the same length as the input
