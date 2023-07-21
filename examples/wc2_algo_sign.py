@@ -1,6 +1,7 @@
 from logging import basicConfig, DEBUG, INFO
 from time import sleep
 from dataclasses import make_dataclass
+from collections import defaultdict
 from pywalletconnect.client import WCClient, WCv1Client
 from algosdk.encoding import msgpack_encode, msgpack_decode, is_valid_address
 from algosdk.transaction import SignedTransaction, calculate_group_id
