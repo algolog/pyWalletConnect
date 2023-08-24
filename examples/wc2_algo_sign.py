@@ -1,7 +1,6 @@
 from logging import basicConfig, DEBUG, INFO
 from time import sleep
 from dataclasses import make_dataclass
-from collections import defaultdict
 from pywalletconnect.client import WCClient, WCv1Client
 from algosdk.encoding import msgpack_encode, msgpack_decode, is_valid_address
 from algosdk.transaction import SignedTransaction, calculate_group_id
@@ -20,7 +19,7 @@ ALGORAND_CHAIN_ID_WC2 = {'mainnet': 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73k',
 
 WCError = make_dataclass('WCError', [('msg', str), ('code', int)])
 WC_ERROR_REJECTED = WCError('User Rejected Request', 4001)
-WC_ERROR_UNAUTHORIZED = WCError('User Rejected Request', 4100)
+WC_ERROR_UNAUTHORIZED = WCError('Unauthorized', 4100)
 WC_ERROR_UNSUPPORTED = WCError('Unsupported Operation', 4200)
 WC_ERROR_INVALID_INPUT = WCError('Invalid Input', 4300)
 
@@ -43,8 +42,9 @@ def process_sign_txns(txns, key, opts=None):
     error = None
     result = []
     nogrp_utxns = []  # all unsigned input txns with their group stripped
-    grp_ids = []      # all group_ids from input txns
-    warn_tx_nums = defaultdict(list)  # store seq_nums of dangerous tnxs
+    grp_ids = []  # all group_ids from input txns
+    # store seq_nums of dangerous tnxs
+    dangerous_ops = {'rekey_to': [], 'close_remainder_to': [], 'close_assets_to': []}
 
     for seq_num, wallet_txn in enumerate(txns, 1):
         # extract the Transaction object for signing
@@ -81,12 +81,9 @@ def process_sign_txns(txns, key, opts=None):
                 break
 
         # detect dangerous ops
-        if getattr(unsigned_txn, 'rekey_to', None):
-            warn_tx_nums['rekey_to'].append(seq_num)
-        if getattr(unsigned_txn, 'close_remainder_to', None):
-            warn_tx_nums['close_remainder_to'].append(seq_num)
-        if getattr(unsigned_txn, 'close_assets_to', None):
-            warn_tx_nums['close_assets_to'].append(seq_num)
+        for op in dangerous_ops:
+            if getattr(unsigned_txn, op, None):
+                dangerous_ops[op].append(seq_num)
 
         # human-readable group id as in algoexplorer
         group_id = unsigned_txn.group
@@ -94,7 +91,7 @@ def process_sign_txns(txns, key, opts=None):
             group_id = b64encode(group_id).decode()
 
         # verbose txn report
-        print('~'*70)
+        print('~' * 70)
         print(f'Tx seq number: {seq_num}')
         print(f'Message (untrusted): {message}')
         print(f'authAddr: {auth_addr}')
@@ -103,7 +100,7 @@ def process_sign_txns(txns, key, opts=None):
         print(f'group_ID: {group_id}')
         print(f'tx_type: {unsigned_txn.type}')
         print(f'txn: {str(unsigned_txn)}')
-        print('~'*70)
+        print('~' * 70)
 
         if signers == []:
             # when signers is an empty array we must not sign this txn
@@ -113,7 +110,7 @@ def process_sign_txns(txns, key, opts=None):
                     stxn = msgpack_decode(wallet_txn['stxn'])
                     # check that unsigned part matches the input
                     if (
-                        type(stxn) == SignedTransaction
+                        isinstance(stxn, SignedTransaction)
                         and stxn.transaction == unsigned_txn
                     ):
                         out_txn = stxn
@@ -148,9 +145,11 @@ def process_sign_txns(txns, key, opts=None):
             error = WC_ERROR_UNSUPPORTED
 
     # report summary of dangerous transactions
-    if warn_tx_nums:
-        wlist = [f'{warn_tx_nums[op]} has {op}' for op in warn_tx_nums]
-        print('WARNING:', '; '.join(wlist), '- WARNING!!!')
+    if any(dangerous_ops.values()):
+        warn_msgs = [
+            f'{dangerous_ops[op]} has {op}' for op in dangerous_ops if dangerous_ops[op]
+        ]
+        print('WARNING:', '; '.join(warn_msgs), '- WARNING!!!')
 
     # must return array of the same length as the input
     if error is None:
@@ -168,12 +167,12 @@ def WCCLIalgo():
     print("-= pyWalletConnect minimal demo - Algorand chain =-")
 
     # Load wallet account. Use .env for demo only,
-    # better keep your keys in KMD or hw backed keyring
+    # better keep your keys in KMD or system keyring
     env_vars = dotenv_values()
     wallet_network = 'mainnet'
     wallet_key = mnemonic.to_private_key(env_vars["mnemonic"])
     wallet_address = account.address_from_private_key(wallet_key)
-    signing_key = wallet_key    # can be another key for rekeyed accounts
+    signing_key = wallet_key  # can be another key for rekeyed accounts
     signing_address = account.address_from_private_key(signing_key)
     print(f"Using Algorand '{wallet_network}' network")
     print(f"Using account: {wallet_address}")
