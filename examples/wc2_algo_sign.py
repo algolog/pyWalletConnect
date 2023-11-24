@@ -192,12 +192,12 @@ def WCCLIalgo():
         wallet_chain_id = ALGORAND_CHAIN_ID_WC2[wallet_network]
 
     print("Connecting with the Dapp ...")
-    req_id, req_chain_id, request_info = wclient.open_session()
-    if req_chain_id != wallet_chain_id:
+    req_id, req_chain_ids, request_info = wclient.open_session()
+    if wallet_chain_id not in req_chain_ids:
         # Chain id mismatch
         wclient.close()
-        raise ValueError(f"Chain ID from Dapp ({req_chain_id}) is not the"
-                         f" same as the wallet's ({wallet_chain_id}).")
+        raise ValueError(f"Chain ID of the wallet ({wallet_chain_id}) is not"
+                         f" from Dapp's supported chains ({req_chain_id})")
 
     # Waiting for user accept the Dapp request
     user_ok = input(
