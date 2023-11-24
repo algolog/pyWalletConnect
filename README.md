@@ -50,7 +50,7 @@ Basic example :
 from pywalletconnect import WCClient, WCClientInvalidOption
 # Input the wc URI
 string_uri = input("Input the WalletConnect URI : ")
-WCClient.set_wallet_metadata(WALLET_METADATA)  # Optional, else identify pyWalletConnect as wallet
+WCClient.set_wallet_metadata(WALLET_METADATA)  # Optional, else identify pyWalletConnect as the wallet
 WCClient.set_project_id(WALLETCONNECT_PROJECT_ID)  # Required for v2
 WCClient.set_origin(WALLETCONNECT_ORIGIN_DOMAIN)  # Optional for v2
 try:
@@ -62,8 +62,8 @@ except WCClientInvalidOption as exc:
     raise InvalidOption(exc)
 # Wait for the sessionRequest info
 # Can throw WCClientException "sessionRequest timeout"
-req_id, req_chain_id, request_info = wallet_dapp.open_session()
-if req_chain_id != account.chainID:
+req_id, chain_ids, request_info = wallet_dapp.open_session()
+if str(account.chainID) not in chain_ids:
     # Chain id mismatch
     wallet_dapp.close()
     raise InvalidOption("Chain ID from Dapp is not the same as the wallet.")
@@ -214,14 +214,15 @@ Send a RPC error to the webapp (through the relay).
 `.open_session()`  
 Start a WalletConnect session : wait for the session call request message.  
 Must be called right after a WCClient creation.  
-Returns : (message RPCid, chain ID, peerMeta data object).  
+Returns : (message RPCid, chainIDsList, peerMeta data object).  
 Or throws WalletConnectClientException("sessionRequest timeout")
-after 8 seconds and no sessionRequest received.
+after 8 seconds and no sessionRequest received.  
+chainIDsList is a list of string.
 
 `reply_session_request( msg_id, chain_id, account_address )`  
 Send a session approval message, when user approved the connection session request in the wallet.  
 *msg_id* is the RPC id of the session approval request.
-*chain_id* is the integer ideitifying the blockchain.
+*chain_id* is the integer (or its string representation) identifying the blockchain.
 *account_address* is a string of the address of the wallet account ("0x...").
 
 `.reject_session_request( req_id )`  

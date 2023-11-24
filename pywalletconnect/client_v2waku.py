@@ -1,3 +1,22 @@
+# -*- coding: utf8 -*-
+
+# pyWalletConnect : WalletConnect v2 Waku wallet client
+# Copyright (C) 2021-2023 BitLogiK
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 of the License.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have receive a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+
+"""WalletConnect v2 "waku" wallet client for pyWalletConnect"""
+
+
 from urllib.parse import urlparse, parse_qs
 from logging import getLogger
 from time import sleep, time
@@ -185,7 +204,7 @@ class WCv2ClientLegacy(WCClient):
 
     def reply_error(self, req_id, message, error_code):
         """Send a RPC error to the webapp through the relay."""
-        result = {'code': error_code, 'message': message}
+        result = {"code": error_code, "message": message}
         self._reply(req_id, result, False)
 
     def _reply(self, req_id, result, success=True):
@@ -224,7 +243,7 @@ class WCv2ClientLegacy(WCClient):
 
     def open_session(self):
         """Start a WalletConnect session : read session request message.
-        Return : (message RPC ID, chain ID, peerMeta data object).
+        Return : (message RPC ID, chainIDsList, peerMeta data object).
         Or throw WalletConnectClientException("sessionRequest timeout")
         after GLOBAL_TIMEOUT seconds.
         """
@@ -323,7 +342,11 @@ class WCv2ClientLegacy(WCClient):
                     "metadata": self.wallet_metadata,
                 },
                 "expiry": now_epoch + 14400,
-                "state": {"accounts": [f"{self.wallet_namespace}:{chain_id}:{account_address}"]},
+                "state": {
+                    "accounts": [
+                        f"{self.wallet_namespace}:{chain_id}:{account_address}"
+                    ]
+                },
             },
         )
         msgb = self.enc_channel.encrypt_payload(json_encode(respo))

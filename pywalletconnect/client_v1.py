@@ -1,3 +1,22 @@
+# -*- coding: utf8 -*-
+
+# pyWalletConnect : WalletConnect v1 client
+# Copyright (C) 2021-2023 BitLogiK
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 of the License.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have receive a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+
+"""WalletConnect v1 wallet client for pyWalletConnect"""
+
+
 from urllib.parse import parse_qs
 from json import loads
 from logging import getLogger
@@ -119,7 +138,7 @@ class WCv1Client(WCClient):
 
     def reply_error(self, req_id, message, error_code):
         """Send a RPC error to the webapp through the relay."""
-        result = {'code': error_code, 'message': message}
+        result = {"code": error_code, "message": message}
         self._reply(req_id, result, False)
 
     def _reply(self, req_id, result, success=True):
@@ -146,7 +165,7 @@ class WCv1Client(WCClient):
 
     def open_session(self):
         """Start a WalletConnect session : read session request message.
-        Return : (message RPC ID, chain ID, peerMeta data object).
+        Return : (message RPC ID, chainIDsList, peerMeta data object).
         Or throw WalletConnectClientException("sessionRequest timeout")
         after GLOBAL_TIMEOUT seconds.
         """
@@ -173,7 +192,7 @@ class WCv1Client(WCClient):
 
         logger.debug(" -- Session Request received : %s", query_params[0])
         self.app_peer_id = query_params[0]["peerId"]
-        app_chain_id = query_params[0]["chainId"]
+        app_chain_id = [query_params[0]["chainId"]]
         return msg_id, app_chain_id, query_params[0]["peerMeta"]
 
     def reject_session_request(self, msg_id):

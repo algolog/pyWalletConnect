@@ -1,3 +1,22 @@
+# -*- coding: utf8 -*-
+
+# pyWalletConnect : WalletConnect v2 client
+# Copyright (C) 2021-2023 BitLogiK
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 of the License.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have receive a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+
+"""WalletConnect v2 "Iridium" wallet client for pyWalletConnect"""
+
+
 from urllib.parse import urlparse, parse_qs
 from logging import getLogger
 from time import sleep, time
@@ -194,7 +213,7 @@ class WCv2Client(WCClient):
 
     def reply_error(self, req_id, message, error_code):
         """Send a RPC error to the current topic to the webapp through the relay."""
-        result = {'code': error_code, 'message': message}
+        result = {"code": error_code, "message": message}
         self._reply(self.wallet_id, req_id, result, success=False)
 
     def _reply(self, topic, req_id, result, tag=0, success=True):
@@ -237,7 +256,7 @@ class WCv2Client(WCClient):
     def open_session(self):
         """Start a WalletConnect session : read session proposal message.
         Not the session approval, but a warmup for the WalletConnect link.
-        Return : (message RPC ID, chain ID, peerMeta data object).
+        Return : (message RPC ID, chainIDsList, peerMeta data object).
         Or throw WalletConnectClientException("sessionRequest timeout")
         after GLOBAL_TIMEOUT seconds.
         """
@@ -258,31 +277,52 @@ class WCv2Client(WCClient):
                             "Session propose incompatible protocol."
                         )
                     self.peer_pubkey = read_data[2]["proposer"]["publicKey"]
-                    if read_data[2]["requiredNamespaces"].get(
-                            self.wallet_namespace) is None:
+                    req_namespace = read_data[2]["requiredNamespaces"].get(
+                        self.wallet_namespace
+                    )
+                    opt_namespace = read_data[2]["optionalNamespaces"].get(
+                        self.wallet_namespace
+                    )
+                    chain_ids = []
+                    if req_namespace is None and opt_namespace is None:
+                        # Namespace usage case 4 : Not supported
                         raise WCClientException(
-                            f"Wallet namespace ({self.wallet_namespace}) mismatch."
+                            f"Wallet namespace ({self.wallet_namespace}) not found in proposal."
                         )
-                    self.proposed_methods = read_data[2]["requiredNamespaces"][
-                        self.wallet_namespace
-                    ]["methods"]
-                    self.proposed_events = read_data[2]["requiredNamespaces"][
-                        self.wallet_namespace
-                    ]["events"]
+                    if req_namespace is not None:
+                        # Namespace usage case 3 (and 2)
+                        nps = "requiredNamespaces"
+                        chain_ids += [
+                            c.split(":")[-1]
+                            for c in read_data[2][nps][self.wallet_namespace]["chains"]
+                        ]
+                    if opt_namespace is not None:
+                        # Namespace usage case 1 (and 2)
+                        nps = "optionalNamespaces"
+                        chain_ids += [
+                            c.split(":")[-1]
+                            for c in read_data[2][nps][self.wallet_namespace]["chains"]
+                        ]
+                    # Use methods and events from optional is both present
+                    self.proposed_methods = read_data[2][nps][self.wallet_namespace][
+                        "methods"
+                    ]
+                    self.proposed_events = read_data[2][nps][self.wallet_namespace][
+                        "events"
+                    ]
                     peer_meta = read_data[2]["proposer"]["metadata"]
-                    chain_id = read_data[2]["requiredNamespaces"][
-                        self.wallet_namespace
-                    ]["chains"][
-                        0
-                    ].split(":")[-1]
-                    logger.debug("OK continue : Session proposal payload received")
+                    logger.debug("OK continue : Session proposal payload validated.")
                     break
             cyclew += 1
         if cyclew == CYCLES_TIMEOUT:
             self.close()
-            raise WCClientException("No session proposal received.")
+            raise WCClientException(
+                "No session proposal received in time. "
+                "You probably reused an old connection code. "
+                "Please try again with a refreshed code link."
+            )
 
-        return read_data[0], chain_id, peer_meta
+        return read_data[0], chain_ids, peer_meta
 
     def reject_session_request(self, msg_id):
         """Send the sessionRequest rejection."""
@@ -290,7 +330,7 @@ class WCv2Client(WCClient):
         respo_neg = json_rpc_pack_response(
             msg_id,
             {"code": 5000, "message": "User rejected the session."},
-            success=False
+            success=False,
         )
         msgbn = self.topics[self.proposal_topic]["secure_channel"].encrypt_payload(
             respo_neg, None
@@ -341,7 +381,9 @@ class WCv2Client(WCClient):
                 },
                 "namespaces": {
                     self.wallet_namespace: {
-                        "accounts": [f"{self.wallet_namespace}:{chain_id}:{account_address}"],
+                        "accounts": [
+                            f"{self.wallet_namespace}:{chain_id}:{account_address}"
+                        ],
                         "methods": self.proposed_methods,
                         "events": self.proposed_events,
                     }
