@@ -197,7 +197,7 @@ def WCCLIalgo():
         # Chain id mismatch
         wclient.close()
         raise ValueError(f"Chain ID of the wallet ({wallet_chain_id}) is not"
-                         f" from Dapp's supported chains ({req_chain_id})")
+                         f" from Dapp's supported chains ({req_chain_ids})")
 
     # Waiting for user accept the Dapp request
     user_ok = input(
