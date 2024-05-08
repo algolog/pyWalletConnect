@@ -1,4 +1,4 @@
-from logging import basicConfig, DEBUG, INFO
+from logging import basicConfig, getLogger, DEBUG, INFO
 from time import sleep
 from dataclasses import make_dataclass
 from pywalletconnect.client import WCClient, WCv1Client
@@ -11,6 +11,7 @@ from dotenv import dotenv_values
 
 # Set to DEBUG for debug output
 basicConfig(level=INFO)
+logger = getLogger(__name__)
 
 ALGORAND_CHAIN_ID_WC1 = {'mainnet': 416001,
                          'testnet': 416002}
@@ -195,9 +196,8 @@ def WCCLIalgo():
     req_id, req_chain_ids, request_info = wclient.open_session()
     if wallet_chain_id not in req_chain_ids:
         # Chain id mismatch
-        wclient.close()
-        raise ValueError(f"Chain ID of the wallet ({wallet_chain_id}) is not"
-                         f" from Dapp's supported chains ({req_chain_ids})")
+        logger.warning(f"Chain ID of the wallet ({wallet_chain_id}) is not"
+                       f" from Dapp's supported chains ({req_chain_ids})")
 
     # Waiting for user accept the Dapp request
     user_ok = input(
