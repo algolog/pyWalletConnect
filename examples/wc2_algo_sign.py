@@ -4,8 +4,9 @@ from dataclasses import make_dataclass
 from pywalletconnect.client import WCClient, WCv1Client
 from algosdk.encoding import msgpack_encode, msgpack_decode, is_valid_address
 from algosdk.transaction import SignedTransaction, calculate_group_id
+from algosdk.util import sign_bytes
 from algosdk import account, mnemonic
-from base64 import b64encode
+from base64 import b64encode, b64decode
 import copy
 from dotenv import dotenv_values
 
@@ -164,6 +165,35 @@ def process_sign_txns(txns, key, opts=None):
     return (result, error)
 
 
+def process_sign_data(request, key):
+    """
+    Signs request data bytes using sign_bytes() algosdk function.
+    Pera-compatible implementation.
+    """
+    signing_address = account.address_from_private_key(key)
+    error = None
+    result = None
+
+    # validate signing address
+    if not is_valid_address(request['signer']):
+        error = WC_ERROR_INVALID_INPUT
+    if signing_address != request['signer']:
+        error = WC_ERROR_UNAUTHORIZED
+
+    print('~' * 70)
+    print('Request message: ', b64decode(request.get('message', '')))
+    print('Requested signer: ', request.get('signer'))
+    print('Request chainID: ', request.get('chainId'))
+    print('~' * 70)
+
+    # clear the result in case there were any errors
+    if error is None:
+        data_to_sign = b64decode(request['data'])
+        result = [sign_bytes(data_to_sign, key)]
+
+    return (result, error)
+
+
 def WCCLIalgo():
     print("-= pyWalletConnect minimal demo - Algorand chain =-")
 
@@ -196,8 +226,10 @@ def WCCLIalgo():
     req_id, req_chain_ids, request_info = wclient.open_session()
     if wallet_chain_id not in req_chain_ids:
         # Chain id mismatch
-        logger.warning(f"Chain ID of the wallet ({wallet_chain_id}) is not"
-                       f" from Dapp's supported chains ({req_chain_ids})")
+        logger.warning(
+            f"Chain ID of the wallet ({wallet_chain_id}) is not"
+            f" from Dapp's supported chains ({req_chain_ids})"
+        )
 
     # Waiting for user accept the Dapp request
     user_ok = input(
@@ -258,6 +290,21 @@ def WCCLIalgo():
                         if approve_ask == 'y':
                             wclient.reply(request_id, result)
                             print(f"----> Replied with {len(result)} signed Txns.")
+                        else:
+                            err = WC_ERROR_REJECTED
+                            wclient.reply_error(request_id, err.msg, err.code)
+                            print(f"----> Replied with error: {err.code} - {err.msg}")
+                # process data signing request
+                if method == 'algo_signData':
+                    result, err = process_sign_data(params[0], signing_key)
+                    if err is not None:
+                        wclient.reply_error(request_id, err.msg, err.code)
+                        print(f"----> Replied with error: {err.code} - {err.msg}")
+                    else:
+                        approve_ask = input('Send signed data (y/N)?: ').lower()
+                        if approve_ask == 'y':
+                            wclient.reply(request_id, result)
+                            print(f"----> Replied with signed data: {result}.")
                         else:
                             err = WC_ERROR_REJECTED
                             wclient.reply_error(request_id, err.msg, err.code)
